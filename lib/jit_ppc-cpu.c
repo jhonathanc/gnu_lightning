@@ -4440,24 +4440,6 @@ _patch_at(jit_state_t *_jit, jit_word_t instr, jit_word_t label)
 	    u.i[0] = (u.i[0] & ~0xfffd) | (d & 0xfffe);
 	    break;
 	case 18:					/* Bx */
-#if _CALL_AIXDESC
-	    if (_jitc->jump && (!(u.i[0] & 1))) {	/* jmpi label */
-		/* zero is used for toc and env, so, quick check
-		 * if this is a "jmpi main" like initial jit
-		 * instruction */
-		if (((long *)label)[1] == 0 && ((long *)label)[2] == 0) {
-		    for (d = 0; d < _jitc->prolog.offset; d++) {
-			/* not so pretty, but hides powerpc
-			 * specific abi intrinsics and/or
-			 * implementation from user */
-			if (_jitc->prolog.ptr[d] == label) {
-			    label += sizeof(void*) * 3;
-			    break;
-			}
-		    }
-		}
-	    }
-#endif
 	    d = label - instr;
 	    assert(!(d & 3));
 	    if (!can_sign_extend_jump_p(d)) {
@@ -4476,38 +4458,12 @@ _patch_at(jit_state_t *_jit, jit_word_t instr, jit_word_t label)
 #  define BCTR_OFF		7
 #endif
 #if _CALL_AIXDESC
-	    /* movi reg label; jmpr reg */
-	    if (_jitc->jump &&
-#if 0
-		/* check for MLTR(reg) */
-		(u.i[MTCTR_OFF] >> 26) == 31 &&
-		((u.i[MTCTR_OFF] >> 16) & 0x3ff) == 8 &&
-		((u.i[MTCTR_OFF] >> 1) & 0x3ff) == 467 &&
-		/* check for BLR */
-		u.i[BCTR_OFF] == 0x4e800020) {
-#else
-		/* check for MTCTR(reg) */
-		(u.i[MTCTR_OFF] >> 26) == 31 &&
-		((u.i[MTCTR_OFF] >> 16) & 0x3ff) == 9 &&
-		((u.i[MTCTR_OFF] >> 1) & 0x3ff) == 467 &&
-		/* check for BCTR */
-		u.i[BCTR_OFF] == 0x4e800420) {
-#endif
-		/* zero is used for toc and env, so, quick check
-		 * if this is a "jmpi main" like initial jit
-		 * instruction */
-		if (((long *)label)[1] == 0 && ((long *)label)[2] == 0) {
-		    for (d = 0; d < _jitc->prolog.offset; d++) {
-			/* not so pretty, but hides powerpc
-			 * specific abi intrinsics and/or
-			 * implementation from user */
-			if (_jitc->prolog.ptr[d] == label) {
-			    label += sizeof(void*) * 3;
-			    break;
-			}
-		    }
-		}
-	    }
+	    /* Keep movi/jmpr targets as code addresses. */
+	    if (!((u.i[MTCTR_OFF] >> 26) == 31 &&
+		  ((u.i[MTCTR_OFF] >> 16) & 0x3ff) == 9 &&
+		  ((u.i[MTCTR_OFF] >> 1) & 0x3ff) == 467 &&
+		  u.i[BCTR_OFF] == 0x4e800420))
+		label = function_address(label);
 #endif
 #undef BCTR_OFF
 #undef MTCTR_OFF

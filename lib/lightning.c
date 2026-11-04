@@ -42,6 +42,11 @@
  */
 static jit_word_t hash_data(const void*, jit_word_t);
 
+#if __powerpc__ && _CALL_AIXDESC
+#define function_address(u)		_function_address(_jit, u)
+static jit_word_t _function_address(jit_state_t*, jit_word_t);
+#endif
+
 #define new_pool()			_new_pool(_jit)
 static void _new_pool(jit_state_t*);
 
@@ -699,7 +704,11 @@ _jit_address(jit_state_t *_jit, jit_node_t *node)
 	   (node->code == jit_code_note || node->code == jit_code_name ||
 	    /* If another special fixed marker, returned by jit_indirect() */
 	    (node->code == jit_code_label && (node->flag & jit_flag_use) != 0)));
+#if __powerpc__ && _CALL_AIXDESC
+    return ((jit_pointer_t)function_address(node->u.w));
+#else
     return ((jit_pointer_t)node->u.w);
+#endif
 }
 
 jit_node_t *
@@ -2432,9 +2441,9 @@ _jit_dataset(jit_state_t *_jit)
 jit_pointer_t
 _jit_get_code(jit_state_t *_jit, jit_word_t *length)
 {
-    assert(_jitc->realize);
+    assert(!_jitc || _jitc->realize);
     if (length) {
-	if (_jitc->done)
+	if (!_jitc || _jitc->done)
 	    /* If code already generated, return exact size of code */
 	    *length = _jit->pc.uc - _jit->code.ptr;
 	else
@@ -2554,6 +2563,7 @@ _jit_emit(jit_state_t *_jit)
 	    }
 #if !HAVE_MMAP
 	    assert(_jit->user_code);
+	    return (NULL);
 #else
 	    if (_jit->user_code)
 		goto fail;
@@ -2626,7 +2636,11 @@ _jit_emit(jit_state_t *_jit)
     }
 #endif /* HAVE_MMAP */
 
+#if __powerpc__ && _CALL_AIXDESC
+    return (code);
+#else
     return (_jit->code.ptr);
+#endif
 
 #if HAVE_MMAP
 fail:

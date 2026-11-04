@@ -732,8 +732,13 @@ struct jit_compiler {
 	jit_word_t	 *ptr;
 	jit_word_t	  offset;
 	jit_word_t	  length;
+#if __powerpc__
+	jit_word_t	 *data;
+#endif
     } prolog;
+#if __ia64__
     jit_bool_t		  jump;
+#endif
 #elif __riscv && __WORDSIZE == 64
     struct {
 	/* Hash table for constants to be resolved and patched */

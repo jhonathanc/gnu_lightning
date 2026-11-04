@@ -137,6 +137,10 @@ _jit_get_size(jit_state_t *_jit)
     /* Heuristically only 20% of constants are unique. */
     size += extra / 5;
 #  endif
+#  if __powerpc__ && _CALL_AIXDESC
+    size += (_jitc->functions.offset + 1) * 3 * sizeof(jit_word_t);
+    size += sizeof(jit_word_t) - 1;
+#  endif
 
     return size;
 }

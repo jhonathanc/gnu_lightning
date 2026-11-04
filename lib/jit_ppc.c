@@ -106,6 +106,36 @@ typedef jit_pointer_t jit_va_list_t;
 #define patch(instr, node)		_patch(_jit, instr, node)
 static void _patch(jit_state_t*,jit_word_t,jit_node_t*);
 
+#if _CALL_AIXDESC
+#define function_entry()			_function_entry(_jit)
+static void _function_entry(jit_state_t*);
+
+static void
+_function_entry(jit_state_t *_jit)
+{
+    if (_jitc->prolog.offset >= _jitc->prolog.length) {
+	_jitc->prolog.length += 16;
+	jit_realloc((jit_pointer_t *)&_jitc->prolog.ptr,
+		    (_jitc->prolog.length - 16) * sizeof(jit_word_t),
+		    _jitc->prolog.length * sizeof(jit_word_t));
+    }
+    _jitc->prolog.ptr[_jitc->prolog.offset++] = _jit->pc.w;
+}
+
+static jit_word_t
+_function_address(jit_state_t *_jit, jit_word_t address)
+{
+    jit_word_t		 offset;
+
+    if (!_jitc->prolog.data)
+	return (address);
+    for (offset = 0; offset < _jitc->prolog.offset; offset++)
+	if (_jitc->prolog.ptr[offset] == address)
+	    return ((jit_word_t)(_jitc->prolog.data + offset * 3));
+    return (address);
+}
+#endif
+
 /* libgcc */
 extern void __clear_cache(void *, void *);
 
@@ -1288,19 +1318,16 @@ _emit_code(jit_state_t *_jit)
 #endif
 #if _CALL_AIXDESC
     undo.prolog_offset = 0;
+    _jitc->prolog.offset = 0;
+    _jitc->prolog.data = NULL;
     for (node = _jitc->head; node; node = node->next)
 	if (node->code != jit_code_label &&
 	    node->code != jit_code_note &&
 	    node->code != jit_code_live &&
 	    node->code != jit_code_name)
 	    break;
-    if (node && node->code != jit_code_prolog) {
-	/* code may start with a jump so add an initial function descriptor */
-	word = _jit->pc.w + sizeof(void*) * 3;
-	iw(word);			/* addr */
-	iw(0);				/* toc */
-	iw(0);				/* env */
-    }
+    if (node && node->code != jit_code_prolog)
+	function_entry();
 #endif
 
 #define case_rr(name, type)						\
@@ -1554,9 +1581,13 @@ _emit_code(jit_state_t *_jit)
 	    case jit_code_movi:
 		if (node->flag & jit_flag_node) {
 		    temp = node->v.n;
+#if _CALL_AIXDESC
+		    if (temp->code == jit_code_data)
+#else
 		    if (temp->code == jit_code_data ||
 			(temp->code == jit_code_label &&
 			 (temp->flag & jit_flag_patch)))
+#endif
 			movi(rn(node->u.w), temp->u.w);
 		    else {
 			assert(temp->code == jit_code_label ||
@@ -1936,10 +1967,6 @@ _emit_code(jit_state_t *_jit)
 		break;
 	    case jit_code_jmpi:
 		if (node->flag & jit_flag_node) {
-#if _CALL_AIXDESC
-		    if (_jit->pc.uc == _jit->code.ptr + sizeof(void*) * 3)
-			_jitc->jump = 1;
-#endif
 		    temp = node->u.n;
 		    assert(temp->code == jit_code_label ||
 			   temp->code == jit_code_epilog);
@@ -1980,9 +2007,12 @@ _emit_code(jit_state_t *_jit)
 		    temp = node->u.n;
 		    assert(temp->code == jit_code_label ||
 			   temp->code == jit_code_epilog);
+#if !_CALL_AIXDESC
 		    if (temp->flag & jit_flag_patch)
 			xcalli(temp->u.w, value);
-		    else {
+		    else
+#endif
+		    {
 			word = _jit->code.length -
 			    (_jit->pc.uc - _jit->code.ptr);
 #if _CALL_SYSV
@@ -2014,22 +2044,8 @@ _emit_code(jit_state_t *_jit)
 	    restart_function:
 		_jitc->again = 0;
 #if _CALL_AIXDESC
-		if (!_jitc->function->assume_frame) {
-		    /* Keep descriptor addresses for jumps to function entries. */
-		    if (_jitc->prolog.offset >= _jitc->prolog.length) {
-			_jitc->prolog.length += 16;
-			jit_realloc((jit_pointer_t *)&_jitc->prolog.ptr,
-				    (_jitc->prolog.length - 16) *
-				    sizeof(jit_word_t),
-				    _jitc->prolog.length * sizeof(jit_word_t));
-		    }
-		    _jitc->prolog.ptr[_jitc->prolog.offset++] = _jit->pc.w;
-		    /* function descriptor */
-		    word = _jit->pc.w + sizeof(void*) * 3;
-		    iw(word);				/* addr */
-		    iw(0);				/* toc */
-		    iw(0);				/* env */
-		}
+		if (!_jitc->function->assume_frame)
+		    function_entry();
 #endif
 		prolog(node);
 		break;
@@ -2284,6 +2300,23 @@ _emit_code(jit_state_t *_jit)
 #undef case_rw
 #undef case_rr
 
+#if _CALL_AIXDESC
+    if (_jitc->prolog.offset) {
+	word = (-_jit->pc.w) & (sizeof(jit_word_t) - 1);
+	if (_jit->code.length - (_jit->pc.uc - _jit->code.ptr) <
+	    word + _jitc->prolog.offset * 3 * sizeof(jit_word_t))
+	    return (NULL);
+	if (word)
+	    nop(word);
+	_jitc->prolog.data = (jit_word_t *)_jit->pc.uc;
+	for (offset = 0; offset < _jitc->prolog.offset; offset++) {
+	    iw(_jitc->prolog.ptr[offset]);
+	    iw(0);				/* toc */
+	    iw(0);				/* env */
+	}
+    }
+#endif
+
     for (offset = 0; offset < _jitc->patches.offset; offset++) {
 	node = _jitc->patches.ptr[offset].node;
 	word = node->code == jit_code_movi ? node->v.n->u.w : node->u.n->u.w;
@@ -2292,7 +2325,11 @@ _emit_code(jit_state_t *_jit)
 
     jit_flush(_jit->code.ptr, _jit->pc.uc);
 
+#if _CALL_AIXDESC
+    return ((jit_pointer_t)function_address((jit_word_t)_jit->code.ptr));
+#else
     return (_jit->code.ptr);
+#endif
 }
 
 #define CODE				1
@@ -2359,7 +2396,12 @@ _patch(jit_state_t *_jit, jit_word_t instr, jit_node_t *node)
 	flag = node->v.n->flag;
     else
 	flag = node->u.n->flag;
+#if _CALL_AIXDESC
+    assert(!(flag & jit_flag_patch) ||
+	   node->code == jit_code_movi || node->code == jit_code_calli);
+#else
     assert(!(flag & jit_flag_patch));
+#endif
     if (_jitc->patches.offset >= _jitc->patches.length) {
 	jit_realloc((jit_pointer_t *)&_jitc->patches.ptr,
 		    _jitc->patches.length * sizeof(jit_patch_t),
