@@ -560,6 +560,9 @@ struct jit_function {
     } call;
     jit_node_t		*prolog;
     jit_node_t		*epilog;
+#if __powerpc__ && _CALL_AIXDESC
+    jit_word_t		 descriptor;
+#endif
     jit_node_t		*alist;
     jit_int32_t		*regoff;
     jit_regset_t	 regset;
@@ -724,7 +727,7 @@ struct jit_compiler {
 	jit_int32_t	  values[1024];	/* pending constants */
 	jit_word_t	  patches[2048];
     } consts;
-#elif (__powerpc__ && _CALL_AIXDESC) || __ia64__
+#elif __ia64__
     /* Keep track of prolog addresses, just for the sake of making
      * jit that starts with a jump to a "main" label work like other
      * backends. */
@@ -732,13 +735,8 @@ struct jit_compiler {
 	jit_word_t	 *ptr;
 	jit_word_t	  offset;
 	jit_word_t	  length;
-#if __powerpc__
-	jit_word_t	 *data;
-#endif
     } prolog;
-#if __ia64__
     jit_bool_t		  jump;
-#endif
 #elif __riscv && __WORDSIZE == 64
     struct {
 	/* Hash table for constants to be resolved and patched */

@@ -1926,9 +1926,8 @@ required to generate code.
 If @code{jit_get_code} is called after @code{jit_emit}, the
 @var{code_size} argument is set to the exact amount of bytes used
 by the code.
-This query remains valid after @code{jit_clear_state}.  On targets using
-function descriptors, the buffer address can differ from the callable
-function pointer returned by @code{jit_emit}.
+On targets using function descriptors, the buffer address can differ from
+the callable function pointer returned by @code{jit_emit}.
 @end deftypefun
 
 @deftypefun void jit_set_code (jit_ponter_t @var{code}, jit_word_t @var{size})

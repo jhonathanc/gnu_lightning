@@ -44,7 +44,7 @@ static jit_word_t hash_data(const void*, jit_word_t);
 
 #if __powerpc__ && _CALL_AIXDESC
 #define function_address(u)		_function_address(_jit, u)
-static jit_word_t _function_address(jit_state_t*, jit_word_t);
+static jit_word_t _function_address(jit_state_t*, jit_node_t*);
 #endif
 
 #define new_pool()			_new_pool(_jit)
@@ -705,7 +705,7 @@ _jit_address(jit_state_t *_jit, jit_node_t *node)
 	    /* If another special fixed marker, returned by jit_indirect() */
 	    (node->code == jit_code_label && (node->flag & jit_flag_use) != 0)));
 #if __powerpc__ && _CALL_AIXDESC
-    return ((jit_pointer_t)function_address(node->u.w));
+    return ((jit_pointer_t)function_address(node));
 #else
     return ((jit_pointer_t)node->u.w);
 #endif
@@ -989,7 +989,7 @@ void _jit_really_clear_state(jit_state_t *_jit)
     jit_free((jit_pointer_t *)&_jitc->data_info.ptr);
 #endif
 
-#if (__powerpc__ && _CALL_AIXDESC) || __ia64__
+#if __ia64__
     jit_free((jit_pointer_t *)&_jitc->prolog.ptr);
 #endif
 
@@ -2441,9 +2441,9 @@ _jit_dataset(jit_state_t *_jit)
 jit_pointer_t
 _jit_get_code(jit_state_t *_jit, jit_word_t *length)
 {
-    assert(!_jitc || _jitc->realize);
+    assert(_jitc->realize);
     if (length) {
-	if (!_jitc || _jitc->done)
+	if (_jitc->done)
 	    /* If code already generated, return exact size of code */
 	    *length = _jit->pc.uc - _jit->code.ptr;
 	else

@@ -4451,23 +4451,6 @@ _patch_at(jit_state_t *_jit, jit_word_t instr, jit_word_t label)
 	    break;
 	case 15:					/* LI */
 #if __WORDSIZE == 32
-#  define MTCTR_OFF		2
-#  define BCTR_OFF		3
-#else
-#  define MTCTR_OFF		6
-#  define BCTR_OFF		7
-#endif
-#if _CALL_AIXDESC
-	    /* Keep movi/jmpr targets as code addresses. */
-	    if (!((u.i[MTCTR_OFF] >> 26) == 31 &&
-		  ((u.i[MTCTR_OFF] >> 16) & 0x3ff) == 9 &&
-		  ((u.i[MTCTR_OFF] >> 1) & 0x3ff) == 467 &&
-		  u.i[BCTR_OFF] == 0x4e800420))
-		label = function_address(label);
-#endif
-#undef BCTR_OFF
-#undef MTCTR_OFF
-#if __WORDSIZE == 32
 	    assert(!(u.i[0] & 0x1f0000));
 	    u.i[0] = (u.i[0] & ~0xffff) | ((label >> 16) & 0xffff);
 	    assert((u.i[1] & 0xfc000000) >> 26 == 24);	/* ORI */

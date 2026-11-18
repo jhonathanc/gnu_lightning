@@ -94,6 +94,11 @@ _jit_size_collect(jit_state_t *_jit, jit_node_t *node)
 
     if (_jitc->cptr == _jit->code.ptr) {
 	length = _jit->pc.w - _jitc->size;
+#if __powerpc__ && _CALL_AIXDESC
+	/* Attribute each pooled descriptor to its prolog estimate. */
+	if (node->code == jit_code_prolog && !_jitc->function->assume_frame)
+	    length += 3 * sizeof(jit_word_t);
+#endif
 	if (_szs[node->code] < length)
 	    _szs[node->code] = length;
     }
@@ -138,8 +143,8 @@ _jit_get_size(jit_state_t *_jit)
     size += extra / 5;
 #  endif
 #  if __powerpc__ && _CALL_AIXDESC
-    size += (_jitc->functions.offset + 1) * 3 * sizeof(jit_word_t);
-    size += sizeof(jit_word_t) - 1;
+    /* Prolog estimates include descriptors; allow for the initial entry. */
+    size += 4 * sizeof(jit_word_t) - 1;
 #  endif
 
     return size;
